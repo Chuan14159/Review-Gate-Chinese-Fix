@@ -22,23 +22,46 @@ Review Gate 解决了 Cursor AI 经常过早结束任务的问题。通过引入
 ## 中文版更新内容
 
 ### 2.7.3-cn.4
-- 禁用语音功能（Cursor webview 安全限制）
-- 优化输入框布局
-- 调整版本号策略（基于原版 2.7.3）
-- 采用 Cursor Skills 架构替代 mdc 规则
+
+**语音功能已禁用**
+- 原因：Windows 11 系统对 SoX 音频工具的兼容性问题，以及 Cursor webview 的麦克风权限安全限制
+- 影响：语音输入按钮已隐藏，用户需通过文字或图片进行交互
+
+**采用 Cursor Skills 架构**
+- 替代旧版 mdc 规则文件，使用 `.cursor/skills/review-gate/SKILL.md` 进行配置
+- 优势：项目级别规则管理，自动传递工作区路径参数
+
+**界面优化**
+- 调整输入框布局，移除不可用的语音相关控件
 
 ### 2.7.3-cn.3
-- 实现多窗口隔离机制
-- 基于 workspace 路径的 MD5 哈希文件隔离
+
+**多窗口并行支持**
+- 支持同时打开多个 Cursor 窗口，每个窗口独立运行 Review Gate
+- 解决了之前多窗口场景下弹窗错位、会话串扰的问题
+- 技术实现：基于工作区路径的 MD5 哈希值生成独立的触发和响应文件
+
+**使用场景**
+- 可在多个项目之间并行工作，每个窗口的 Agent 会话互不干扰
+- 适合同时处理多个独立任务的工作流
 
 ### 2.7.3-cn.2
-- 修复 MCP 依赖问题
-- 修复 UTF-8 编码问题
-- 更改快捷键为 `Ctrl+Alt+G`
-- 调整超时时间为 60 分钟
+
+**稳定性修复**
+- 修复 MCP 服务器启动时的 Python 依赖问题（pydantic、python-dotenv）
+- 修复中文字符在响应文件中的 UTF-8 编码问题
+- 修复 Agent 发送的消息无法在聊天窗口正确显示的问题
+- 修复 MCP 配置合并时覆盖其他服务器配置的问题
+
+**功能调整**
+- 快捷键更改为 `Ctrl+Alt+G`（避免与 Cursor 内置快捷键冲突）
+- 响应超时时间从 5 分钟延长至 60 分钟，适合处理复杂任务
 
 ### 2.7.3-cn.1
-- 中文界面本地化
+
+**中文本地化**
+- 界面文字全面汉化：按钮、提示、状态指示、错误消息
+- 安装脚本输出信息汉化
 
 ## 功能特性
 
@@ -120,8 +143,14 @@ Review Gate 使用 Cursor Skills 架构进行规则配置。
 
 ## 多窗口支持
 
-系统通过 workspace 路径的 MD5 哈希值实现窗口隔离：
+支持同时打开多个 Cursor 窗口并行处理不同项目，每个窗口的 Review Gate 会话完全独立，不会相互干扰。
 
+**典型使用场景**：
+- 窗口 A 处理前端项目，窗口 B 处理后端项目
+- 同时进行多个独立任务的开发工作
+- 在不同项目间快速切换而不中断 Agent 会话
+
+**技术实现**：
 ```
 窗口1 (E:\ProjectA)              窗口2 (E:\ProjectB)
 hash = abc12345                  hash = def67890
@@ -131,9 +160,9 @@ trigger_abc12345.json            trigger_def67890.json
 response_abc12345_xxx.json       response_def67890_xxx.json
 ```
 
-使用要求：
-- 项目需配置 SKILL 规则文件（`.cursor/skills/review-gate/SKILL.md`）
-- Agent 调用时传递 `workspace_path` 参数
+**使用要求**：
+- 每个项目需配置 SKILL 规则文件（`.cursor/skills/review-gate/SKILL.md`）
+- Agent 调用时需传递 `workspace_path` 参数（SKILL 规则会自动处理）
 
 ## 故障排除
 
@@ -150,8 +179,13 @@ type %USERPROFILE%\.cursor\mcp.json
 
 ## 已知限制
 
-- 语音输入功能暂不可用（Cursor webview 安全限制）
-- 仅支持 Windows 平台（其他平台未经测试）
+**语音输入功能不可用**
+- Windows 11 系统中 SoX 音频工具存在兼容性问题，无法正确检测默认录音设备
+- Cursor 的 webview 组件受 Electron 安全策略限制，无法获取麦克风权限
+- 当前版本已禁用语音相关功能，用户需通过文字或图片进行交互
+
+**平台支持**
+- 仅支持 Windows 平台，其他平台（macOS、Linux）未经测试
 
 ## 致谢
 
