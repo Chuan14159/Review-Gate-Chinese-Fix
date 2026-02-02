@@ -309,11 +309,6 @@ debug_*
 *.rar
 *.7z
 
-# Claude/Cursor files
-*.claude
-*CLAUDE.md
-*.cursor
-
 # Compiled files
 *.o
 *.a
