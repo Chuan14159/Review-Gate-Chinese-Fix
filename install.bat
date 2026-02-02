@@ -220,7 +220,7 @@ timeout /t 1 /nobreak >nul 2>&1
 %log_warning% MCP server test skipped (manual verification required)%NC%
 
 REM Install Cursor extension
-set "EXTENSION_FILE=%SCRIPT_DIR%\cursor-extension\review-gate-v2-2.7.3-cn.4.vsix"
+set "EXTENSION_FILE=%SCRIPT_DIR%\cursor-extension\review-gate-v2-2.7.3-cn.5.vsix"
 if exist "!EXTENSION_FILE!" (
     %log_progress% Installing Cursor extension...%NC%
     copy "!EXTENSION_FILE!" "!REVIEW_GATE_DIR!\" >nul
@@ -257,7 +257,7 @@ if exist "!EXTENSION_FILE!" (
         %log_step% 1. Open Cursor IDE%NC%
         %log_step% 2. Press Ctrl+Shift+P%NC%
         %log_step% 3. Type 'Extensions: Install from VSIX'%NC%
-        %log_step% 4. Select: !REVIEW_GATE_DIR!\review-gate-v2-2.7.3-cn.4.vsix%NC%
+        %log_step% 4. Select: !REVIEW_GATE_DIR!\review-gate-v2-2.7.3-cn.5.vsix%NC%
         %log_step% 5. Restart Cursor when prompted%NC%
         echo.
         
@@ -303,7 +303,7 @@ echo.
 %log_header% Installation Summary:%NC%
 %log_step%    - MCP Server: !REVIEW_GATE_DIR!%NC%
 %log_step%    - MCP Config: !CURSOR_MCP_FILE!%NC%
-%log_step%    - Extension: !REVIEW_GATE_DIR!\review-gate-v2-2.7.3-cn.4.vsix%NC%
+%log_step%    - Extension: !REVIEW_GATE_DIR!\review-gate-v2-2.7.3-cn.5.vsix%NC%
 %log_step%    - Global Rule: !CURSOR_RULES_DIR!\ReviewGate.mdc%NC%
 echo.
 %log_header% Testing Your Installation:%NC%

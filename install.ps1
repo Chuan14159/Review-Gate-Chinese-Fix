@@ -57,89 +57,141 @@ if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
     Write-Success-Log "Scoop already installed"
 }
 
-# Install SoX for speech-to-text
-Write-Progress-Log "Installing SoX for speech-to-text..."
-if (-not (Get-Command sox -ErrorAction SilentlyContinue)) {
+# Install FFmpeg for speech-to-text (replaces SoX for better Win11 compatibility)
+Write-Progress-Log "Installing FFmpeg for speech-to-text..."
+if (-not (Get-Command ffmpeg -ErrorAction SilentlyContinue)) {
     try {
-        scoop bucket add extras
-        scoop install sox
-        Write-Success-Log "SoX installed successfully"
+        scoop install ffmpeg
+        Write-Success-Log "FFmpeg installed successfully"
     } catch {
-        Write-Warning-Log "Failed to install SoX via Scoop"
-        Write-Info-Log "Please install SoX manually from http://sox.sourceforge.net/"
+        Write-Warning-Log "Failed to install FFmpeg via Scoop"
+        Write-Info-Log "Please install FFmpeg manually from https://ffmpeg.org/download.html"
     }
 } else {
-    Write-Success-Log "SoX already installed"
+    Write-Success-Log "FFmpeg already installed"
 }
 
-# Validate SoX installation and microphone access
-Write-Progress-Log "Validating SoX and microphone setup..."
-if (Get-Command sox -ErrorAction SilentlyContinue) {
+# Validate FFmpeg installation and microphone access
+Write-Progress-Log "Validating FFmpeg and microphone setup..."
+if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
     try {
-        $soxVersion = & sox --version 2>$null | Select-Object -First 1
-        Write-Success-Log "SoX found: $soxVersion"
+        $ffmpegVersion = & ffmpeg -version 2>$null | Select-Object -First 1
+        Write-Success-Log "FFmpeg found: $ffmpegVersion"
         
-        # Test microphone access (quick test)
-        Write-Progress-Log "Testing microphone access..."
-        $testFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), "sox_test_$([System.Guid]::NewGuid().ToString('N').Substring(0,8)).wav")
-        
-        $testProcess = Start-Process -FilePath "sox" -ArgumentList @("-d", "-r", "16000", "-c", "1", $testFile, "trim", "0", "0.1") -NoNewWindow -PassThru -Wait
-        
-        # Clean up test file
-        if (Test-Path $testFile) {
-            Remove-Item $testFile -Force -ErrorAction SilentlyContinue
-        }
-        
-        if ($testProcess.ExitCode -eq 0) {
-            Write-Success-Log "Microphone access test successful"
+        # List available audio devices
+        Write-Progress-Log "Checking available audio devices..."
+        $deviceList = & ffmpeg -list_devices true -f dshow -i dummy 2>&1 | Out-String
+        if ($deviceList -match "audio") {
+            Write-Success-Log "Audio devices detected"
+            Write-Info-Log "Available audio devices:"
+            $deviceList -split "`n" | Where-Object { $_ -match '\[dshow' -and $_ -match 'audio' } | ForEach-Object {
+                Write-Step-Log "   $_"
+            }
         } else {
-            Write-Warning-Log "Microphone test failed - speech features may not work"
+            Write-Warning-Log "No audio devices found - speech features may not work"
             Write-Info-Log "Common fixes:"
-            Write-Step-Log "   - Grant microphone permissions to PowerShell/Terminal"
             Write-Step-Log "   - Check Windows Settings > Privacy > Microphone"
-            Write-Step-Log "   - Make sure no other apps are using the microphone"
+            Write-Step-Log "   - Make sure microphone is connected and enabled"
         }
     } catch {
-        Write-Warning-Log "SoX validation error: $($_.Exception.Message)"
+        Write-Warning-Log "FFmpeg validation error: $($_.Exception.Message)"
     }
 } else {
-    Write-Error-Log "SoX installation failed or not found"
+    Write-Error-Log "FFmpeg installation failed or not found"
     Write-Info-Log "Speech-to-text features will be disabled"
-    Write-Info-Log "Try installing manually: scoop install sox"
+    Write-Info-Log "Try installing manually: scoop install ffmpeg"
 }
 
-# Check if Python 3 is available
-Write-Progress-Log "Checking Python installation..."
-if (-not (Get-Command python -ErrorAction SilentlyContinue) -and -not (Get-Command python3 -ErrorAction SilentlyContinue)) {
-    Write-Error-Log "Python 3 is required but not installed"
-    Write-Info-Log "Would you like to install Python 3 using Scoop? (y/n)"
-    $userInput = Read-Host
-    if ($userInput -eq "y") {
-        Write-Progress-Log "Installing Python 3 using Scoop..."
-        try {
-            scoop install python
-            Write-Success-Log "Python 3 installed successfully using Scoop"
-        } catch {
-            Write-Error-Log "Failed to install Python 3 via Scoop"
-            Write-Info-Log "Please install Python 3 manually from https://python.org or Microsoft Store"
-            Write-Info-Log "Then run this script again"
+# Install dedicated Python 3.12 for Review Gate (avoids conflicts with system Python)
+Write-Progress-Log "Setting up dedicated Python 3.12 environment..."
+
+$ReviewGatePythonDir = Join-Path $env:USERPROFILE "cursor-extensions\review-gate-python"
+$ReviewGatePython = Join-Path $ReviewGatePythonDir "python.exe"
+
+# Check if we already have a dedicated Python 3.12 installed
+$needPythonInstall = $true
+if (Test-Path $ReviewGatePython) {
+    try {
+        $existingVersion = & $ReviewGatePython --version 2>&1
+        if ($existingVersion -match "Python 3\.12") {
+            Write-Success-Log "Dedicated Python 3.12 already installed"
+            $needPythonInstall = $false
+        } else {
+            Write-Info-Log "Existing Python version: $existingVersion - will reinstall 3.12"
+        }
+    } catch {
+        Write-Info-Log "Existing Python installation invalid - will reinstall"
+    }
+}
+
+if ($needPythonInstall) {
+    Write-Progress-Log "Installing Python 3.12 (dedicated for Review Gate)..."
+    Write-Info-Log "This ensures compatibility with SenseVoice speech recognition"
+    
+    # Create directory
+    New-Item -Path $ReviewGatePythonDir -ItemType Directory -Force | Out-Null
+    
+    # Download Python 3.12 embeddable package (lightweight, no admin required)
+    $pythonZipUrl = "https://www.python.org/ftp/python/3.12.8/python-3.12.8-embed-amd64.zip"
+    $pythonZipFile = Join-Path $env:TEMP "python-3.12.8-embed-amd64.zip"
+    $pipGetUrl = "https://bootstrap.pypa.io/get-pip.py"
+    $getPipFile = Join-Path $env:TEMP "get-pip.py"
+    
+    try {
+        Write-Progress-Log "Downloading Python 3.12..."
+        Invoke-WebRequest -Uri $pythonZipUrl -OutFile $pythonZipFile -UseBasicParsing
+        
+        Write-Progress-Log "Extracting Python 3.12..."
+        Expand-Archive -Path $pythonZipFile -DestinationPath $ReviewGatePythonDir -Force
+        
+        # Enable pip by modifying python312._pth file
+        $pthFile = Join-Path $ReviewGatePythonDir "python312._pth"
+        if (Test-Path $pthFile) {
+            $pthContent = Get-Content $pthFile
+            # Uncomment import site line and add Lib\site-packages
+            $newPthContent = $pthContent -replace "^#import site", "import site"
+            $newPthContent += "`nLib\site-packages"
+            Set-Content -Path $pthFile -Value $newPthContent
+        }
+        
+        # Download and install pip
+        Write-Progress-Log "Installing pip..."
+        Invoke-WebRequest -Uri $pipGetUrl -OutFile $getPipFile -UseBasicParsing
+        & $ReviewGatePython $getPipFile --no-warn-script-location
+        
+        # Verify installation
+        if (Test-Path $ReviewGatePython) {
+            $installedVersion = & $ReviewGatePython --version 2>&1
+            Write-Success-Log "Python 3.12 installed: $installedVersion"
+        } else {
+            throw "Python installation verification failed"
+        }
+        
+        # Clean up
+        Remove-Item $pythonZipFile -Force -ErrorAction SilentlyContinue
+        Remove-Item $getPipFile -Force -ErrorAction SilentlyContinue
+        
+    } catch {
+        Write-Error-Log "Failed to install Python 3.12: $($_.Exception.Message)"
+        Write-Info-Log "Falling back to system Python..."
+        
+        # Fallback to system Python
+        if (Get-Command python -ErrorAction SilentlyContinue) {
+            $ReviewGatePython = "python"
+            Write-Warning-Log "Using system Python - speech features may not work"
+        } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
+            $ReviewGatePython = "python3"
+            Write-Warning-Log "Using system Python - speech features may not work"
+        } else {
+            Write-Error-Log "No Python available. Please install Python 3.12 manually"
             exit 1
         }
-    } else {
-        Write-Info-Log "Please install Python 3 from https://python.org or Microsoft Store"
-        Write-Info-Log "Then run this script again"
-        exit 1
-    }
-} else {
-    $pythonCmd = if (Get-Command python -ErrorAction SilentlyContinue) { "python" } else { "python3" }
-    $testOutput = & $pythonCmd -c "print('hello world')"
-    if ($testOutput -eq "hello world") {
-        Write-Success-Log "Python found and working correctly"
-    } else {
-        Write-Error-Log "Python is installed but not working correctly"
-        exit 1
     }
 }
+
+# Set the Python command for subsequent operations
+$pythonCmd = $ReviewGatePython
+Write-Info-Log "Using Python: $pythonCmd"
 
 # Create global Cursor extensions directory
 $CursorExtensionsDir = Join-Path $env:USERPROFILE "cursor-extensions"
@@ -151,7 +203,7 @@ New-Item -Path $ReviewGateDir -ItemType Directory -Force | Out-Null
 # Copy MCP server files
 Write-Progress-Log "Copying MCP server files..."
 $mcpServerSrc = Join-Path $ScriptDir "review_gate_v2_mcp.py"
-$requirementsSrc = Join-Path $ScriptDir "requirements_simple.txt"
+$requirementsSrc = Join-Path $ScriptDir "requirements.txt"
 
 if (Test-Path $mcpServerSrc) {
     Copy-Item $mcpServerSrc $ReviewGateDir -Force
@@ -167,20 +219,42 @@ if (Test-Path $requirementsSrc) {
     exit 1
 }
 
-# Create Python virtual environment
+# Create Python virtual environment using dedicated Python 3.12
 Write-Progress-Log "Creating Python virtual environment..."
 Set-Location $ReviewGateDir
 
-# Check if venv module is available
-if (-not (Get-Command python -ErrorAction SilentlyContinue | Where-Object { $_.Source -like "*venv*" })) {
-    Write-Warning-Log "venv module not found. Installing venv..."
-    & $pythonCmd -m ensurepip
-    & $pythonCmd -m pip install --upgrade pip
-    & $pythonCmd -m pip install virtualenv
+# For embedded Python, we need to use virtualenv instead of venv
+$venvDir = Join-Path $ReviewGateDir "venv"
+
+# Remove existing venv if it exists (to ensure clean state)
+if (Test-Path $venvDir) {
+    Write-Info-Log "Removing existing virtual environment..."
+    Remove-Item -Path $venvDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# Create virtual environment
-& $pythonCmd -m venv venv
+# Install virtualenv and create venv
+Write-Progress-Log "Installing virtualenv..."
+try {
+    & $pythonCmd -m pip install --upgrade pip virtualenv --no-warn-script-location 2>$null
+    
+    Write-Progress-Log "Creating virtual environment with Python 3.12..."
+    & $pythonCmd -m virtualenv $venvDir --no-download
+    
+    if (Test-Path (Join-Path $venvDir "Scripts\python.exe")) {
+        Write-Success-Log "Virtual environment created successfully"
+    } else {
+        throw "Virtual environment creation failed"
+    }
+} catch {
+    Write-Warning-Log "virtualenv failed: $($_.Exception.Message)"
+    Write-Progress-Log "Trying alternative venv method..."
+    try {
+        & $pythonCmd -m venv $venvDir
+    } catch {
+        Write-Error-Log "Failed to create virtual environment"
+        exit 1
+    }
+}
 
 # Activate virtual environment and install dependencies
 Write-Progress-Log "Installing Python dependencies..."
@@ -195,26 +269,30 @@ if (Test-Path $venvActivate) {
     Write-Progress-Log "Installing core dependencies (mcp, pillow)..."
     & $venvPython -m pip install mcp>=1.9.2 Pillow>=10.0.0 asyncio typing-extensions>=4.14.0
     
-    # Install faster-whisper with error handling for Windows
-    Write-Progress-Log "Installing faster-whisper for speech-to-text..."
+    # Install SenseVoice (FunASR) for speech-to-text
+    # SenseVoice: 阿里开源语音识别，中文准确率更高，速度比Whisper快5-15倍
+    Write-Progress-Log "Installing SenseVoice (FunASR) for speech-to-text..."
+    Write-Info-Log "SenseVoice provides better Chinese recognition accuracy"
     try {
-        & $venvPython -m pip install faster-whisper>=1.0.0
-        Write-Success-Log "faster-whisper installed successfully"
-    } catch {
-        Write-Warning-Log "faster-whisper installation failed - trying alternative approach"
+        & $venvPython -m pip install funasr>=1.1.2 modelscope torch torchaudio
+        Write-Success-Log "SenseVoice (FunASR) installed successfully"
+        
+        # Pre-download model to avoid first-run delay
+        Write-Progress-Log "Pre-downloading SenseVoice model (this may take a few minutes)..."
         try {
-            # Try CPU-only installation for Windows compatibility
-            & $venvPython -m pip install faster-whisper>=1.0.0 --no-deps
-            & $venvPython -m pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-            Write-Success-Log "faster-whisper installed with CPU-only dependencies"
+            & $venvPython -c "from funasr import AutoModel; AutoModel(model='iic/SenseVoiceSmall', trust_remote_code=True, device='cpu')"
+            Write-Success-Log "SenseVoice model downloaded successfully"
         } catch {
-            Write-Error-Log "faster-whisper installation failed"
-            Write-Info-Log "Speech-to-text will be disabled"
-            Write-Info-Log "Common fixes:"
-            Write-Step-Log "   - Install Visual Studio Build Tools"
-            Write-Step-Log "   - Or use Windows Subsystem for Linux (WSL)"
-            Write-Step-Log "   - You can manually install later: pip install faster-whisper"
+            Write-Warning-Log "Model pre-download failed - will download on first use"
+            Write-Info-Log "This is normal if network is slow"
         }
+    } catch {
+        Write-Warning-Log "SenseVoice installation failed"
+        Write-Info-Log "Speech-to-text will be disabled"
+        Write-Info-Log "Common fixes:"
+        Write-Step-Log "   - Check network connection"
+        Write-Step-Log "   - Ensure enough disk space (~2GB)"
+        Write-Step-Log "   - You can manually install later: pip install funasr modelscope"
     }
     
     deactivate
@@ -337,7 +415,7 @@ try {
 }
 
 # Install Cursor extension
-$ExtensionFile = Join-Path $ScriptDir "cursor-extension\review-gate-v2-2.7.3-cn.4.vsix"
+$ExtensionFile = Join-Path $ScriptDir "cursor-extension\review-gate-v2-2.7.3-cn.5.vsix"
 if (Test-Path $ExtensionFile) {
     Write-Progress-Log "Installing Cursor extension..."
     
@@ -373,7 +451,7 @@ if (Test-Path $ExtensionFile) {
         Write-Step-Log "1. Open Cursor IDE"
         Write-Step-Log "2. Press Ctrl+Shift+P"
         Write-Step-Log "3. Type 'Extensions: Install from VSIX'"
-        Write-Step-Log "4. Select: $ReviewGateDir\review-gate-v2-2.7.3-cn.4.vsix"
+        Write-Step-Log "4. Select: $ReviewGateDir\review-gate-v2-2.7.3-cn.5.vsix"
         Write-Step-Log "5. Restart Cursor when prompted"
         Write-Host ""
         
@@ -430,12 +508,12 @@ Write-Host ""
 Write-Header-Log "Installation Summary:"
 Write-Step-Log "   - MCP Server: $ReviewGateDir"
 Write-Step-Log "   - MCP Config: $CursorMcpFile"
-Write-Step-Log "   - Extension: $ReviewGateDir\review-gate-v2-2.7.3-cn.4.vsix"
+Write-Step-Log "   - Extension: $ReviewGateDir\review-gate-v2-2.7.3-cn.5.vsix"
 Write-Step-Log "   - Global Rule: $CursorRulesDir\ReviewGate.mdc"
 Write-Host ""
 Write-Header-Log "Testing Your Installation:"
 Write-Step-Log "1. Restart Cursor completely"
-Write-Info-Log "2. Press Ctrl+Shift+R to test manual trigger"
+Write-Info-Log "2. Press Ctrl+Alt+G to test manual trigger"
 Write-Info-Log "3. Or ask Cursor Agent: 'Use the review_gate_chat tool'"
 Write-Host ""
 Write-Header-Log "Speech-to-Text Features:"
@@ -450,7 +528,8 @@ Write-Step-Log "   - Images are included in response"
 Write-Host ""
 Write-Header-Log "Troubleshooting:"
 Write-Info-Log "   - Logs: Get-Content ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), 'review_gate_v2.log')) -Wait"
-Write-Info-Log "   - Test SoX: sox --version"
+Write-Info-Log "   - Test FFmpeg: ffmpeg -version"
+Write-Info-Log "   - Test SenseVoice: python -c 'from funasr import AutoModel; print(\"OK\")'"
 Write-Info-Log "   - Browser Console: F12 in Cursor"
 Write-Host ""
 Write-Success-Log "Enjoy your voice-activated Review Gate!"

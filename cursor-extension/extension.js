@@ -947,14 +947,55 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
             position: relative;
         }
         
-        /* 语音功能已禁用 - Cursor webview不支持麦克风权限 */
-        .mic-icon {
-            display: none !important;
+        .mic-button {
+            background: none;
+            border: none;
+            color: #ff6b35;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 4px;
+            border-radius: 50%;
+            width: 28px;
+            height: 28px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+            vertical-align: middle;
+            line-height: 28px;
+        }
+        
+        .mic-button:hover {
+            background: rgba(255, 107, 53, 0.1);
+            transform: scale(1.1);
+        }
+        
+        .mic-button.recording {
+            color: #ff3333;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .mic-button.processing {
+            color: #ff6b35;
+        }
+        
+        .mic-button.processing i {
+            animation: spin 1s linear infinite;
+        }
+        
+        .mic-button i {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            line-height: 1;
         }
         
         @keyframes spin {
-            0% { transform: translateY(-50%) rotate(0deg); }
-            100% { transform: translateY(-50%) rotate(360deg); }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
         
         .input-wrapper:focus-within {
@@ -975,7 +1016,6 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
             font-family: inherit;
             font-size: 14px;
             line-height: 1.4;
-            padding-left: 12px; /* 语音功能已禁用 */
         }
         
         .message-input:focus {
@@ -1205,10 +1245,12 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
         
         <div class="input-container" id="inputContainer">
             <div class="input-wrapper">
-                <i id="micIcon" class="fas fa-microphone mic-icon active" title="点击说话"></i>
                 <textarea id="messageInput" class="message-input" placeholder="${mcpIntegration ? 'Cursor Agent 正在等待您的回复...' : '输入您的反馈...'}" rows="1"></textarea>
                 <button id="attachButton" class="attach-button" title="上传图片">
                     <i class="fas fa-image"></i>
+                </button>
+                <button id="micButton" class="mic-button" title="语音输入">
+                    <i class="fas fa-microphone"></i>
                 </button>
             </div>
             <button id="sendButton" class="send-button" title="${mcpIntegration ? '发送至Agent' : '发送'}">
@@ -1224,7 +1266,7 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
         const messageInput = document.getElementById('messageInput');
         const sendButton = document.getElementById('sendButton');
         const attachButton = document.getElementById('attachButton');
-        const micIcon = document.getElementById('micIcon');
+        const micButton = document.getElementById('micButton');
         const typingIndicator = document.getElementById('typingIndicator');
         const statusIndicator = document.getElementById('statusIndicator');
         const mcpStatus = document.getElementById('mcpStatus');
@@ -1297,8 +1339,8 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
                 tip = '请在系统设置中授予麦克风权限';
             } else if (errorMessage.includes('busy') || errorMessage.includes('device')) {
                 tip = '请关闭其他录音应用后重试';
-            } else if (errorMessage.includes('SoX') || errorMessage.includes('sox')) {
-                tip = 'SoX音频工具可能需要安装或更新';
+            } else if (errorMessage.includes('FFmpeg') || errorMessage.includes('ffmpeg')) {
+                tip = 'FFmpeg音频工具可能需要安装或更新，请运行 install.ps1';
             } else if (errorMessage.includes('timeout')) {
                 tip = '请说得更清晰或检查麦克风连接';
             } else if (errorMessage.includes('Whisper') || errorMessage.includes('transcription')) {
@@ -1352,9 +1394,6 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
             messageInput.value = '';
             attachedImages = []; // Clear attached images
             adjustTextareaHeight();
-            
-            // Ensure mic icon is visible after sending message
-            toggleMicIcon();
             
             simulateResponse(displayMessage);
         }
@@ -1570,45 +1609,54 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
             return false;
         }
         
-        // Hide/show mic icon based on input
-        function toggleMicIcon() {
-            // Don't toggle if we're currently recording or processing
-            if (isRecording || micIcon.classList.contains('processing')) {
-                return;
-            }
-            
-            if (messageInput.value.trim().length > 0) {
-                micIcon.style.opacity = '0';
-                micIcon.style.pointerEvents = 'none';
-            } else {
-                // Always ensure mic is visible and clickable when input is empty
-                micIcon.style.opacity = '0.7';
-                micIcon.style.pointerEvents = 'auto';
-                // Ensure proper mic icon state
-                if (!micIcon.classList.contains('fa-microphone')) {
-                    micIcon.className = 'fas fa-microphone mic-icon active';
-                }
-            }
-        }
-        
-        // 语音功能已禁用 - Cursor webview不支持麦克风权限
-        // Speech recording functions - DISABLED
+        // Speech recording functions - using FFmpeg via Node.js backend
         function startRecording() {
-            console.log('⚠️ 语音功能已禁用');
+            console.log('🎤 Starting recording via FFmpeg...');
+            isRecording = true;
+            micButton.innerHTML = '<i class="fas fa-stop"></i>';
+            micButton.classList.add('recording');
+            micButton.title = '录音中... 点击停止';
+            // Send message to Node.js backend to start FFmpeg recording
+            vscode.postMessage({ command: 'startRecording' });
         }
         
         function stopRecording() {
-            console.log('⚠️ 语音功能已禁用');
+            console.log('🎤 Stopping recording...');
+            isRecording = false;
+            micButton.innerHTML = '<i class="fas fa-spinner"></i>';
+            micButton.classList.remove('recording');
+            micButton.classList.add('processing');
+            micButton.title = '处理语音中...';
+            // Send message to Node.js backend to stop FFmpeg recording
+            vscode.postMessage({ command: 'stopRecording' });
         }
         
-        function resetMicIcon() {
-            // No-op: 语音功能已禁用
+        function resetMicButton() {
+            isRecording = false;
+            micButton.innerHTML = '<i class="fas fa-microphone"></i>';
+            micButton.classList.remove('recording', 'processing');
+            micButton.title = '语音输入';
+            console.log('🎤 Mic button reset to normal state');
+        }
+        
+        // Insert text at cursor position in textarea and select it to highlight
+        function insertTextAtCursor(text) {
+            const start = messageInput.selectionStart;
+            const end = messageInput.selectionEnd;
+            const before = messageInput.value.substring(0, start);
+            const after = messageInput.value.substring(end);
+            messageInput.value = before + text + after;
+            
+            // Select the inserted text to highlight it (shows what was voice-inputted)
+            messageInput.selectionStart = start;
+            messageInput.selectionEnd = start + text.length;
+            messageInput.focus();
+            adjustTextareaHeight();
         }
         
         // Event listeners
         messageInput.addEventListener('input', () => {
             adjustTextareaHeight();
-            toggleMicIcon();
         });
         
         messageInput.addEventListener('keydown', (e) => {
@@ -1636,7 +1684,13 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
             vscode.postMessage({ command: 'uploadImage' });
         });
         
-        // 语音功能已禁用 - 无点击事件
+        micButton.addEventListener('click', () => {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        });
         
         // Handle messages from extension
         window.addEventListener('message', event => {
@@ -1669,56 +1723,37 @@ function getReviewGateHTML(title = "Review Gate", mcpIntegration = false) {
                     // Handle speech-to-text result
                     console.log('📝 Speech transcription received:', message);
                     if (message.transcription && message.transcription.trim()) {
-                        messageInput.value = message.transcription.trim();
-                        adjustTextareaHeight();
-                        messageInput.focus();
-                        console.log('✅ Text injected into input:', message.transcription.trim());
-                        // Reset mic icon after successful transcription
-                        resetMicIcon();
+                        // Insert text at cursor position instead of replacing
+                        insertTextAtCursor(message.transcription.trim());
+                        console.log('✅ Text inserted at cursor:', message.transcription.trim());
+                        // Reset mic button after successful transcription
+                        resetMicButton();
                     } else if (message.error) {
                         console.error('语音识别错误:', message.error);
                         
                         // Show prominent error message in chat
                         addSpeechError(message.error);
                         
-                        // Also show in placeholder briefly
-                        const originalPlaceholder = messageInput.placeholder;
-                        messageInput.placeholder = '语音识别失败，请重试';
-                        setTimeout(() => {
-                            messageInput.placeholder = originalPlaceholder;
-                            resetMicIcon();
-                        }, 3000);
+                        // Reset mic button
+                        resetMicButton();
                     } else {
                         console.log('未检测到语音');
                         
                         // Show helpful message in chat
                         addMessage('未检测到语音，请说清楚后重试', 'system', null, true);
                         
-                        const originalPlaceholder = messageInput.placeholder;
-                        messageInput.placeholder = '未检测到语音，请重试';
-                        setTimeout(() => {
-                            messageInput.placeholder = originalPlaceholder;
-                            resetMicIcon();
-                        }, 3000);
+                        // Reset mic button
+                        resetMicButton();
                     }
                     break;
             }
         });
         
-        // Initialize speech availability - now using SoX directly
+        // Initialize speech availability - using FFmpeg via Node.js backend
         function initializeSpeech() {
-            // Always available since we're using SoX directly
-            micIcon.style.opacity = '0.7';
-            micIcon.style.pointerEvents = 'auto';
-            micIcon.title = '点击说话';
-            micIcon.classList.add('active');
-            console.log('Speech recording available via SoX direct recording');
-            
-            // Ensure mic icon visibility on initialization
-            if (messageInput.value.trim().length === 0) {
-                micIcon.style.opacity = '0.7';
-                micIcon.style.pointerEvents = 'auto';
-            }
+            // Always available since we're using FFmpeg in the backend
+            console.log('Speech recording available via FFmpeg');
+            // Mic button is always visible and clickable
         }
         
         // Make removeImage globally accessible for onclick handlers
@@ -1964,7 +1999,7 @@ async function handleWebAudioRecording(base64Audio, mimeType, triggerId) {
             return;
         }
         
-        // Send to MCP server for transcription (same as SoX path)
+        // Send to MCP server for transcription
         handleSpeechToText(audioFile, triggerId, true);
         
     } catch (error) {
@@ -2030,7 +2065,17 @@ async function handleSpeechToText(audioData, triggerId, isFilePath = false) {
                 try {
                     const result = JSON.parse(fs.readFileSync(resultFile, 'utf8'));
                     
-                    if (result.transcription) {
+                    // Check for error response from MCP server
+                    if (result.error) {
+                        console.log(`❌ Speech-to-text error from MCP: ${result.error}`);
+                        if (chatPanel) {
+                            chatPanel.webview.postMessage({
+                                command: 'speechTranscribed',
+                                transcription: '',
+                                error: result.error
+                            });
+                        }
+                    } else if (result.transcription) {
                         // Send transcription back to webview
                         if (chatPanel) {
                             chatPanel.webview.postMessage({
@@ -2041,6 +2086,16 @@ async function handleSpeechToText(audioData, triggerId, isFilePath = false) {
                         
                         console.log(`Speech transcribed: ${result.transcription}`);
                         logUserInput(`Speech transcribed: ${result.transcription}`, 'SPEECH_TRANSCRIBED', triggerId);
+                    } else {
+                        // No transcription and no error - empty result
+                        console.log('⚠️ Empty speech-to-text result');
+                        if (chatPanel) {
+                            chatPanel.webview.postMessage({
+                                command: 'speechTranscribed',
+                                transcription: '',
+                                error: '未检测到语音内容'
+                            });
+                        }
                     }
                     
                     // Cleanup - let MCP server handle audio file cleanup to avoid race conditions
@@ -2100,87 +2155,103 @@ async function handleSpeechToText(audioData, triggerId, isFilePath = false) {
     }
 }
 
-async function validateSoxSetup() {
+// Global variable to store detected microphone device name
+let detectedMicrophoneDevice = null;
+
+async function validateFFmpegSetup() {
     /**
-     * Validate SoX installation and microphone access
-     * Returns: {success: boolean, error: string}
+     * Validate FFmpeg installation and detect microphone device
+     * Returns: {success: boolean, error: string, device: string}
      */
     return new Promise((resolve) => {
         try {
-            // Test if sox command exists
-            const testProcess = spawn('sox', ['--version'], { stdio: 'pipe' });
+            // Test if ffmpeg command exists
+            const testProcess = spawn('ffmpeg', ['-version'], { stdio: 'pipe' });
             
-            let soxVersion = '';
+            let ffmpegVersion = '';
             testProcess.stdout.on('data', (data) => {
-                soxVersion += data.toString();
+                ffmpegVersion += data.toString();
             });
             
             testProcess.on('close', (code) => {
                 if (code !== 0) {
-                    resolve({ success: false, error: 'SoX command not found or failed' });
+                    resolve({ success: false, error: 'FFmpeg command not found or failed', device: null });
                     return;
                 }
                 
-                console.log(`✅ SoX found: ${soxVersion.trim()}`);
+                const versionLine = ffmpegVersion.split('\n')[0] || 'unknown';
+                console.log(`✅ FFmpeg found: ${versionLine.trim()}`);
                 
-                // Test microphone access with a very short recording
-                const testFile = getTempPath(`review_gate_test_${Date.now()}.wav`);
-                const micTestProcess = spawn('sox', ['-d', '-r', '16000', '-c', '1', testFile, 'trim', '0', '0.1'], { stdio: 'pipe' });
+                // List available audio devices
+                console.log('🔍 Detecting audio devices...');
+                const listProcess = spawn('ffmpeg', ['-list_devices', 'true', '-f', 'dshow', '-i', 'dummy'], { stdio: 'pipe' });
                 
-                let testError = '';
-                micTestProcess.stderr.on('data', (data) => {
-                    testError += data.toString();
+                let deviceOutput = '';
+                listProcess.stderr.on('data', (data) => {
+                    deviceOutput += data.toString();
                 });
                 
-                micTestProcess.on('close', (testCode) => {
-                    // Clean up test file
-                    try {
-                        if (fs.existsSync(testFile)) {
-                            fs.unlinkSync(testFile);
-                        }
-                    } catch (e) {}
+                listProcess.on('close', () => {
+                    // Parse device list to find audio input devices
+                    // FFmpeg dshow output format: [dshow @ xxx] "Device Name" (audio) or (video)
+                    const lines = deviceOutput.split('\n');
+                    let audioDevices = [];
                     
-                    if (testCode !== 0) {
-                        let errorMsg = 'Microphone access failed';
-                        if (testError.includes('Permission denied')) {
-                            errorMsg = 'Microphone permission denied - please allow microphone access in system settings';
-                        } else if (testError.includes('No such device')) {
-                            errorMsg = 'No microphone device found';
-                        } else if (testError.includes('Device or resource busy')) {
-                            errorMsg = 'Microphone is busy - close other recording applications';
-                        } else if (testError) {
-                            errorMsg = `Microphone test failed: ${testError.substring(0, 100)}`;
+                    console.log('🔍 Parsing FFmpeg device output...');
+                    
+                    for (const line of lines) {
+                        // Look for lines containing "(audio)" which indicates audio devices
+                        // Format: [dshow @ xxx] "Device Name" (audio)
+                        if (line.includes('(audio)') && line.includes('"')) {
+                            // Extract device name from quotes
+                            const match = line.match(/"([^"]+)"/);
+                            if (match && match[1]) {
+                                // Skip "Alternative name" entries
+                                if (!line.includes('Alternative name')) {
+                                    audioDevices.push(match[1]);
+                                    console.log(`🎤 Found audio device: ${match[1]}`);
+                                }
+                            }
                         }
-                        resolve({ success: false, error: errorMsg });
-                    } else {
-                        console.log('✅ Microphone access test successful');
-                        resolve({ success: true, error: null });
                     }
+                    
+                    if (audioDevices.length === 0) {
+                        console.log('⚠️ No audio devices found in output. Raw output:', deviceOutput.substring(0, 500));
+                        resolve({ success: false, error: 'No audio input devices found. Please check microphone connection.', device: null });
+                        return;
+                    }
+                    
+                    // Use the first available audio device (usually the default microphone)
+                    const selectedDevice = audioDevices[0];
+                    detectedMicrophoneDevice = selectedDevice;
+                    console.log(`✅ Selected microphone: ${selectedDevice}`);
+                    
+                    resolve({ success: true, error: null, device: selectedDevice });
                 });
                 
-                // Timeout for microphone test
+                // Timeout for device listing
                 setTimeout(() => {
                     try {
-                        micTestProcess.kill('SIGTERM');
-                        resolve({ success: false, error: 'Microphone test timed out' });
+                        listProcess.kill('SIGTERM');
+                        resolve({ success: false, error: 'Device detection timed out', device: null });
                     } catch (e) {}
-                }, 3000);
+                }, 5000);
             });
             
             testProcess.on('error', (error) => {
-                resolve({ success: false, error: `SoX not installed: ${error.message}` });
+                resolve({ success: false, error: `FFmpeg not installed: ${error.message}. Please run install.ps1 or install FFmpeg manually.`, device: null });
             });
             
             // Timeout for version check
             setTimeout(() => {
                 try {
                     testProcess.kill('SIGTERM');
-                    resolve({ success: false, error: 'SoX version check timed out' });
+                    resolve({ success: false, error: 'FFmpeg version check timed out', device: null });
                 } catch (e) {}
-            }, 2000);
+            }, 3000);
             
         } catch (error) {
-            resolve({ success: false, error: `SoX validation error: ${error.message}` });
+            resolve({ success: false, error: `FFmpeg validation error: ${error.message}`, device: null });
         }
     });
 }
@@ -2189,7 +2260,6 @@ async function startNodeRecording(triggerId) {
     try {
         if (currentRecording) {
             console.log('Recording already in progress');
-            // Send feedback to webview
             if (chatPanel) {
                 chatPanel.webview.postMessage({
                     command: 'speechTranscribed',
@@ -2200,11 +2270,11 @@ async function startNodeRecording(triggerId) {
             return;
         }
         
-        // Validate SoX setup before recording
-        console.log('🔍 Validating SoX and microphone setup...');
-        const validation = await validateSoxSetup();
+        // Validate FFmpeg setup and detect microphone
+        console.log('🔍 Validating FFmpeg and microphone setup...');
+        const validation = await validateFFmpegSetup();
         if (!validation.success) {
-            console.log(`❌ SoX validation failed: ${validation.error}`);
+            console.log(`❌ FFmpeg validation failed: ${validation.error}`);
             if (chatPanel) {
                 chatPanel.webview.postMessage({
                     command: 'speechTranscribed',
@@ -2214,35 +2284,37 @@ async function startNodeRecording(triggerId) {
             }
             return;
         }
-        console.log('✅ SoX validation successful - proceeding with recording');
+        console.log(`✅ FFmpeg validation successful - using device: ${validation.device}`);
         
         const timestamp = Date.now();
         const audioFile = getTempPath(`review_gate_audio_${triggerId}_${timestamp}.wav`);
         
-        console.log(`🎤 Starting SoX recording: ${audioFile}`);
+        console.log(`🎤 Starting FFmpeg recording: ${audioFile}`);
         
-        // Use sox directly to record audio
-        // sox -d -r 16000 -c 1 output.wav (let SoX auto-detect bit depth)
-        const soxArgs = [
-            '-d',           // Use default input device (microphone)
-            '-r', '16000',  // Sample rate 16kHz
-            '-c', '1',      // Mono (1 channel)
-            audioFile       // Output file
+        // FFmpeg command for recording audio via DirectShow
+        // ffmpeg -f dshow -i audio="Device Name" -ar 16000 -ac 1 -y output.wav
+        const ffmpegArgs = [
+            '-f', 'dshow',                          // Use DirectShow (Windows)
+            '-i', `audio=${validation.device}`,     // Audio input device
+            '-ar', '16000',                         // Sample rate 16kHz
+            '-ac', '1',                             // Mono (1 channel)
+            '-y',                                   // Overwrite output file
+            audioFile                               // Output file
         ];
         
-        console.log(`🎤 Starting sox with args:`, soxArgs);
+        console.log(`🎤 Starting ffmpeg with args:`, ffmpegArgs);
         
-        // Spawn sox process
-        currentRecording = spawn('sox', soxArgs);
+        // Spawn ffmpeg process with stdin for graceful stop
+        currentRecording = spawn('ffmpeg', ffmpegArgs, { stdio: ['pipe', 'pipe', 'pipe'] });
         
         // Store metadata
         currentRecording.audioFile = audioFile;
         currentRecording.triggerId = triggerId;
         currentRecording.startTime = Date.now();
         
-        // Handle sox process events
+        // Handle ffmpeg process events
         currentRecording.on('error', (error) => {
-            console.log(`❌ SoX process error: ${error.message}`);
+            console.log(`❌ FFmpeg process error: ${error.message}`);
             if (chatPanel) {
                 chatPanel.webview.postMessage({
                     command: 'speechTranscribed',
@@ -2254,10 +2326,14 @@ async function startNodeRecording(triggerId) {
         });
         
         currentRecording.stderr.on('data', (data) => {
-            console.log(`SoX stderr: ${data}`);
+            const output = data.toString();
+            // Only log non-progress output
+            if (!output.includes('size=') && !output.includes('time=')) {
+                console.log(`FFmpeg: ${output}`);
+            }
         });
         
-        console.log(`✅ SoX recording started: PID ${currentRecording.pid}, file: ${audioFile}`);
+        console.log(`✅ FFmpeg recording started: PID ${currentRecording.pid}, file: ${audioFile}`);
         
         // Send confirmation to webview that recording has started
         if (chatPanel) {
@@ -2268,7 +2344,7 @@ async function startNodeRecording(triggerId) {
         }
         
     } catch (error) {
-        console.log(`❌ Failed to start SoX recording: ${error.message}`);
+        console.log(`❌ Failed to start FFmpeg recording: ${error.message}`);
         if (chatPanel) {
             chatPanel.webview.postMessage({
                 command: 'speechTranscribed',
@@ -2294,16 +2370,27 @@ function stopNodeRecording(triggerId) {
             return;
         }
         
-        const audioFile = currentRecording.audioFile;
-        const recordingPid = currentRecording.pid;
-        console.log(`🛑 Stopping SoX recording: PID ${recordingPid}, file: ${audioFile}`);
+        // Save reference and immediately clear global state to prevent race conditions
+        const recordingProcess = currentRecording;
+        const audioFile = recordingProcess.audioFile;
+        const recordingPid = recordingProcess.pid;
+        currentRecording = null;  // Clear immediately to allow new recordings
         
-        // Stop the sox process by sending SIGTERM
-        currentRecording.kill('SIGTERM');
+        console.log(`🛑 Stopping FFmpeg recording: PID ${recordingPid}, file: ${audioFile}`);
+        
+        // Stop FFmpeg gracefully by sending 'q' to stdin
+        if (recordingProcess.stdin) {
+            try {
+                recordingProcess.stdin.write('q');
+                recordingProcess.stdin.end();
+            } catch (stdinError) {
+                console.log(`⚠️ Could not write to stdin: ${stdinError.message}`);
+            }
+        }
         
         // Wait for process to exit and file to be finalized
-        currentRecording.on('exit', (code, signal) => {
-            console.log(`📝 SoX process exited with code: ${code}, signal: ${signal}`);
+        recordingProcess.on('exit', (code, signal) => {
+            console.log(`📝 FFmpeg process exited with code: ${code}, signal: ${signal}`);
             
             // Give a moment for file system to sync
             setTimeout(() => {
@@ -2313,8 +2400,8 @@ function stopNodeRecording(triggerId) {
                     const stats = fs.statSync(audioFile);
                     console.log(`✅ Audio file created: ${audioFile} (${stats.size} bytes)`);
                     
-                    // Check minimum file size (more generous for SoX)
-                    if (stats.size > 500) {
+                    // Check minimum file size
+                    if (stats.size > 1000) {
                         console.log(`🎤 Audio file ready for transcription: ${audioFile} (${stats.size} bytes)`);
                         // Send to MCP server for transcription
                         handleSpeechToText(audioFile, triggerId, true);
@@ -2345,26 +2432,26 @@ function stopNodeRecording(triggerId) {
                     }
                 }
                 
-                currentRecording = null;
-            }, 1000); // Wait 1 second for file system sync
+            }, 500); // Wait 0.5 second for file system sync
         });
         
         // Set a timeout in case the process doesn't exit gracefully
+        let processKilled = false;
         setTimeout(() => {
-            if (currentRecording && currentRecording.pid) {
-                console.log(`⚠️ Force killing SoX process: ${currentRecording.pid}`);
+            if (!processKilled && recordingProcess && !recordingProcess.killed) {
+                console.log(`⚠️ Force killing FFmpeg process: ${recordingPid}`);
                 try {
-                    currentRecording.kill('SIGKILL');
+                    recordingProcess.kill('SIGKILL');
+                    processKilled = true;
                 } catch (e) {
                     console.log(`Could not force kill: ${e.message}`);
                 }
-                currentRecording = null;
             }
         }, 3000);
         
     } catch (error) {
-        console.log(`❌ Failed to stop SoX recording: ${error.message}`);
-        currentRecording = null;
+        console.log(`❌ Failed to stop FFmpeg recording: ${error.message}`);
+        currentRecording = null;  // Ensure state is cleared on error
         if (chatPanel) {
             chatPanel.webview.postMessage({
                 command: 'speechTranscribed',

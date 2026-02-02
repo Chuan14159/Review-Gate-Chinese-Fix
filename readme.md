@@ -6,9 +6,9 @@ Cursor IDE 的 MCP 集成交互控制系统。
 
 > 原作者：[Lakshman Turlapati](https://github.com/LakshmanTurlapati/Review-Gate)  
 > 中文汉化：Chuan  
-> 当前版本：2.7.3-cn.4（基于原版 2.7.3）
+> 当前版本：2.7.3-cn.5（基于原版 2.7.3）
 
-[![Version](https://img.shields.io/badge/version-2.7.3--cn.4-blue.svg)](https://github.com/LakshmanTurlapati/Review-Gate)
+[![Version](https://img.shields.io/badge/version-2.7.3--cn.5-blue.svg)](https://github.com/LakshmanTurlapati/Review-Gate)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-Tool-orange.svg)](https://modelcontextprotocol.io/)
@@ -19,55 +19,34 @@ Cursor IDE 的 MCP 集成交互控制系统。
 
 Review Gate 解决了 Cursor AI 经常过早结束任务的问题。通过引入交互式检查点，让用户在单次请求的生命周期内完成更复杂的任务，充分利用每次请求的工具调用配额。
 
-## 中文版更新内容
+## 中文版更新
+
+### 2.7.3-cn.5
+- 语音识别升级为 SenseVoice（阿里开源），中文准确率大幅提升
+- 语音处理速度提升 5-15 倍，支持自动标点
+- 语音按钮常驻显示，支持随时追加输入并与打字自由配合
+- 每次语音输入后自动选中新内容，便于确认
 
 ### 2.7.3-cn.4
-
-**语音功能已禁用**
-- 原因：Windows 11 系统对 SoX 音频工具的兼容性问题，以及 Cursor webview 的麦克风权限安全限制
-- 影响：语音输入按钮已隐藏，用户需通过文字或图片进行交互
-
-**采用 Cursor Skills 架构**
-- 替代旧版 mdc 规则文件，使用 `.cursor/skills/review-gate/SKILL.md` 进行配置
-- 优势：项目级别规则管理，自动传递工作区路径参数
-
-**界面优化**
-- 调整输入框布局，移除不可用的语音相关控件
+- 采用 Cursor Skills 架构管理规则
 
 ### 2.7.3-cn.3
-
-**多窗口并行支持**
-- 支持同时打开多个 Cursor 窗口，每个窗口独立运行 Review Gate
-- 解决了之前多窗口场景下弹窗错位、会话串扰的问题
-- 技术实现：基于工作区路径的 MD5 哈希值生成独立的触发和响应文件
-
-**使用场景**
-- 可在多个项目之间并行工作，每个窗口的 Agent 会话互不干扰
-- 适合同时处理多个独立任务的工作流
+- 支持多 Cursor 窗口并行工作
 
 ### 2.7.3-cn.2
-
-**稳定性修复**
-- 修复 MCP 服务器启动时的 Python 依赖问题（pydantic、python-dotenv）
-- 修复中文字符在响应文件中的 UTF-8 编码问题
-- 修复 Agent 发送的消息无法在聊天窗口正确显示的问题
-- 修复 MCP 配置合并时覆盖其他服务器配置的问题
-
-**功能调整**
-- 快捷键更改为 `Ctrl+Alt+G`（避免与 Cursor 内置快捷键冲突）
-- 响应超时时间从 5 分钟延长至 60 分钟，适合处理复杂任务
+- 修复各类稳定性问题
+- 快捷键改为 `Ctrl+Alt+G`
+- 响应超时延长至 60 分钟
 
 ### 2.7.3-cn.1
-
-**中文本地化**
-- 界面文字全面汉化：按钮、提示、状态指示、错误消息
-- 安装脚本输出信息汉化
+- 界面全面汉化
 
 ## 功能特性
 
 | 功能 | 说明 |
 |------|------|
 | MCP 集成 | 与 Cursor Agent 无缝交互 |
+| 语音输入 | FFmpeg 录音 + SenseVoice 语音识别（中文优化） |
 | 图片上传 | 支持截图和多格式图片 |
 | 多窗口隔离 | 每个 Cursor 窗口独立工作 |
 | 中文界面 | 完整的本地化支持 |
@@ -82,9 +61,11 @@ graph TD
     C --> D[弹窗界面出现]
     D --> E[用户输入]
     E --> E1[文字命令]
-    E --> E2[图片上传]
+    E --> E2[语音输入]
+    E --> E3[图片上传]
     E1 --> F[Agent 继续执行]
     E2 --> F
+    E3 --> F
     F --> G{任务完成?}
     G -->|否| D
     G -->|是| H[请求结束]
@@ -108,7 +89,7 @@ cd Review-Gate
 
 ### 手动安装
 
-1. 下载 `cursor-extension/review-gate-v2-2.7.3-cn.4.vsix`
+1. 下载 `cursor-extension/review-gate-v2-2.7.3-cn.5.vsix`
 2. 打开 Cursor → 按 `Ctrl+Shift+X`
 3. 点击 `...` 菜单 → "从 VSIX 安装..."
 4. 选择下载的文件并重启 Cursor
@@ -179,10 +160,10 @@ type %USERPROFILE%\.cursor\mcp.json
 
 ## 已知限制
 
-**语音输入功能不可用**
-- Windows 11 系统中 SoX 音频工具存在兼容性问题，无法正确检测默认录音设备
-- Cursor 的 webview 组件受 Electron 安全策略限制，无法获取麦克风权限
-- 当前版本已禁用语音相关功能，用户需通过文字或图片进行交互
+**语音功能依赖**
+- 需要安装 FFmpeg（安装脚本自动配置）
+- 需要安装 SenseVoice 模型（首次使用自动下载，约 1.2GB）
+- 需要确保系统有可用的麦克风设备
 
 **平台支持**
 - 仅支持 Windows 平台，其他平台（macOS、Linux）未经测试

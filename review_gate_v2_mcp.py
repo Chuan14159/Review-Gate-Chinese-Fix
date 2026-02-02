@@ -23,12 +23,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
-# Speech-to-text imports
+# Speech-to-text imports (SenseVoice - 阿里开源，中文识别更准确)
 try:
-    from faster_whisper import WhisperModel
-    WHISPER_AVAILABLE = True
+    from funasr import AutoModel
+    from funasr.utils.postprocess_utils import rich_transcription_postprocess
+    SENSEVOICE_AVAILABLE = True
 except ImportError:
-    WHISPER_AVAILABLE = False
+    SENSEVOICE_AVAILABLE = False
 
 from mcp.server import Server
 from mcp.server.models import InitializationOptions
@@ -101,16 +102,16 @@ class ReviewGateServer:
         self.shutdown_requested = False
         self.shutdown_reason = ""
         self._last_attachments = []
-        self._whisper_model = None
+        self._sensevoice_model = None
         
-        # Initialize Whisper model with comprehensive error handling
-        self._whisper_error = None
-        if WHISPER_AVAILABLE:
-            self._whisper_model = self._initialize_whisper_model()
+        # Initialize SenseVoice model with comprehensive error handling
+        self._sensevoice_error = None
+        if SENSEVOICE_AVAILABLE:
+            self._sensevoice_model = self._initialize_sensevoice_model()
         else:
-            logger.warning("⚠️ Faster-Whisper not available - speech-to-text will be disabled")
-            logger.warning("💡 To enable speech features, install: pip install faster-whisper")
-            self._whisper_error = "faster-whisper package not installed"
+            logger.warning("⚠️ SenseVoice not available - speech-to-text will be disabled")
+            logger.warning("💡 To enable speech features, install: pip install funasr modelscope")
+            self._sensevoice_error = "funasr package not installed"
             
         # Start speech trigger monitoring
         self._start_speech_monitoring()
@@ -121,63 +122,59 @@ class ReviewGateServer:
             if hasattr(handler, 'flush'):
                 handler.flush()
 
-    def _initialize_whisper_model(self):
-        """Initialize Whisper model with comprehensive error handling and fallbacks"""
+    def _initialize_sensevoice_model(self):
+        """Initialize SenseVoice model with comprehensive error handling"""
         try:
-            logger.info("🎤 Loading Faster-Whisper model for speech-to-text...")
+            logger.info("🎤 Loading SenseVoice model for speech-to-text...")
+            logger.info("💡 SenseVoice: 阿里开源语音识别，中文准确率更高，速度比Whisper快5-15倍")
             
-            # Try different model configurations in order of preference
-            model_configs = [
-                {"model": "base", "device": "cpu", "compute_type": "int8"},
-                {"model": "tiny", "device": "cpu", "compute_type": "int8"},
-                {"model": "base", "device": "cpu", "compute_type": "float32"},
-                {"model": "tiny", "device": "cpu", "compute_type": "float32"},
-            ]
+            # SenseVoice model configuration
+            model_dir = "iic/SenseVoiceSmall"
             
-            for i, config in enumerate(model_configs):
-                try:
-                    logger.info(f"🔄 Attempting to load {config['model']} model (attempt {i+1}/{len(model_configs)})")
-                    model = WhisperModel(config['model'], device=config['device'], compute_type=config['compute_type'])
-                    
-                    # Test the model with a quick inference to ensure it works
-                    logger.info(f"✅ Successfully loaded {config['model']} model with {config['compute_type']}")
-                    logger.info(f"📊 Model info - Device: {config['device']}, Compute: {config['compute_type']}")
-                    return model
-                    
-                except Exception as model_error:
-                    logger.warning(f"⚠️ Failed to load {config['model']} model: {model_error}")
-                    if i == len(model_configs) - 1:
-                        # This was the last attempt
-                        raise model_error
-                    continue
+            try:
+                logger.info(f"🔄 Loading SenseVoice model: {model_dir}")
+                model = AutoModel(
+                    model=model_dir,
+                    trust_remote_code=True,
+                    vad_model="fsmn-vad",
+                    vad_kwargs={"max_single_segment_time": 30000},
+                    device="cpu",  # Use CPU for compatibility
+                )
+                
+                logger.info("✅ Successfully loaded SenseVoice model")
+                logger.info("📊 Model info - SenseVoiceSmall with VAD")
+                return model
+                
+            except Exception as model_error:
+                logger.warning(f"⚠️ Failed to load SenseVoice model: {model_error}")
+                raise model_error
             
         except ImportError as import_error:
-            error_msg = f"faster-whisper import failed: {import_error}"
+            error_msg = f"funasr import failed: {import_error}"
             logger.error(f"❌ {error_msg}")
-            self._whisper_error = error_msg
+            self._sensevoice_error = error_msg
             return None
             
         except Exception as e:
-            error_msg = f"Whisper model initialization failed: {e}"
+            error_msg = f"SenseVoice model initialization failed: {e}"
             logger.error(f"❌ {error_msg}")
             
             # Check for common issues and provide specific guidance
             if "CUDA" in str(e):
-                logger.error("💡 CUDA issue detected - make sure you have CPU-only version")
-                logger.error("💡 Try: pip uninstall faster-whisper && pip install faster-whisper")
+                logger.error("💡 CUDA issue detected - using CPU mode")
                 error_msg += " (CUDA compatibility issue)"
-            elif "Visual Studio" in str(e) or "MSVC" in str(e):
-                logger.error("💡 Visual C++ issue detected on Windows")
-                logger.error("💡 Install Visual Studio Build Tools or use pre-built wheels")
-                error_msg += " (Visual C++ dependency missing)"
+            elif "download" in str(e).lower() or "network" in str(e).lower():
+                logger.error("💡 Network issue - model download may have failed")
+                logger.error("💡 Try: pip install modelscope && modelscope download --model iic/SenseVoiceSmall")
+                error_msg += " (Model download failed)"
             elif "Permission" in str(e):
-                logger.error("💡 Permission issue - check file access and antivirus")
+                logger.error("💡 Permission issue - check file access")
                 error_msg += " (Permission denied)"
             elif "disk space" in str(e).lower() or "no space" in str(e).lower():
-                logger.error("💡 Disk space issue - whisper models require storage")
+                logger.error("💡 Disk space issue - SenseVoice model requires ~1.2GB")
                 error_msg += " (Insufficient disk space)"
             
-            self._whisper_error = error_msg
+            self._sensevoice_error = error_msg
             return None
 
     def setup_handlers(self):
@@ -851,14 +848,12 @@ class ReviewGateServer:
                 logger.info(f"✅ Trigger file was consumed immediately by extension: {trigger_file}")
                 file_size = len(json.dumps(trigger_data, indent=2))
             
-            # Force file system sync with retry
-            for attempt in range(3):
+            # Force file system sync (only on Unix/Linux, skip on Windows)
+            if os.name != 'nt':  # Not Windows
                 try:
                     os.sync()
-                    break
-                except Exception as sync_error:
-                    logger.warning(f"⚠️ Sync attempt {attempt + 1} failed: {sync_error}")
-                    await asyncio.sleep(0.1)  # Wait 100ms between attempts
+                except Exception:
+                    pass  # Ignore sync errors
             
             logger.info(f"🔥 IMMEDIATE trigger created for Cursor: {trigger_file}")
             logger.info(f"📁 Trigger file path: {trigger_file.absolute()}")
@@ -973,6 +968,7 @@ class ReviewGateServer:
         """Periodically update log file to keep MCP status active in extension"""
         logger.info("💓 Starting heartbeat logger for extension status monitoring")
         heartbeat_count = 0
+        last_cleanup_time = time.time()
         
         while not self.shutdown_requested:
             try:
@@ -987,12 +983,44 @@ class ReviewGateServer:
                 for handler in logger.handlers:
                     if hasattr(handler, 'flush'):
                         handler.flush()
+                
+                # Clean up stale trigger files every 5 minutes
+                current_time = time.time()
+                if current_time - last_cleanup_time > 300:  # 5 minutes
+                    last_cleanup_time = current_time
+                    await self._cleanup_stale_files()
                         
             except Exception as e:
                 logger.error(f"❌ Heartbeat error: {e}")
                 await asyncio.sleep(5)
         
         logger.info("💔 Heartbeat logger stopped")
+    
+    async def _cleanup_stale_files(self):
+        """Clean up stale trigger and response files (older than 30 minutes)"""
+        try:
+            temp_dir = get_temp_path("")
+            current_time = time.time()
+            cleanup_patterns = [
+                "review_gate_speech_trigger_*.json",
+                "review_gate_speech_response_*.json",
+                "review_gate_audio_*.wav",
+                "review_gate_webaudio_*.webm",
+            ]
+            
+            for pattern in cleanup_patterns:
+                stale_files = glob.glob(os.path.join(temp_dir, pattern))
+                for stale_file in stale_files:
+                    try:
+                        file_age = current_time - os.path.getmtime(stale_file)
+                        # Only delete files older than 30 minutes
+                        if file_age > 1800:  # 30 minutes
+                            Path(stale_file).unlink()
+                            logger.info(f"🧹 Cleaned up stale file (age: {int(file_age/60)}min): {os.path.basename(stale_file)}")
+                    except Exception:
+                        pass
+        except Exception as e:
+            logger.debug(f"Cleanup error: {e}")
     
     async def _monitor_shutdown(self):
         """Monitor for shutdown requests in a separate task"""
@@ -1040,6 +1068,25 @@ class ReviewGateServer:
         """Start monitoring for speech-to-text trigger files with enhanced error handling"""
         self._speech_monitoring_active = False
         self._speech_thread = None
+        
+        # Clean up stale speech trigger files on startup (only files older than 30 minutes)
+        # Using 30-minute threshold with heartbeat consideration to avoid interfering with other windows
+        try:
+            temp_dir = get_temp_path("")
+            current_time = time.time()
+            stale_triggers = glob.glob(os.path.join(temp_dir, "review_gate_speech_trigger_*.json"))
+            for stale_file in stale_triggers:
+                try:
+                    file_age = current_time - os.path.getmtime(stale_file)
+                    # Only delete files older than 30 minutes - well beyond any reasonable processing time
+                    # This ensures we don't interfere with other windows that may be actively processing
+                    if file_age > 1800:  # 30 minutes
+                        Path(stale_file).unlink()
+                        logger.info(f"🧹 Cleaned up stale speech trigger (age: {int(file_age/60)}min): {os.path.basename(stale_file)}")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug(f"Could not clean stale triggers: {e}")
         
         def monitor_speech_triggers():
             """Enhanced speech monitoring with health checks and better error handling"""
@@ -1138,18 +1185,19 @@ class ReviewGateServer:
             self._speech_monitoring_active = False
 
     def _process_speech_request(self, trigger_data):
-        """Process speech-to-text request"""
+        """Process speech-to-text request using SenseVoice"""
         try:
             audio_file = trigger_data.get('data', {}).get('audio_file')
             trigger_id = trigger_data.get('data', {}).get('trigger_id')
             
             if not audio_file or not trigger_id:
-                logger.error("❌ Invalid speech request - missing audio_file or trigger_id")
+                # Silently ignore incomplete speech requests (likely stale trigger files)
+                logger.debug("Ignoring incomplete speech request - missing audio_file or trigger_id")
                 return
             
-            if not self._whisper_model:
-                error_detail = self._whisper_error or "Whisper model not available"
-                logger.error(f"❌ Whisper model not available: {error_detail}")
+            if not self._sensevoice_model:
+                error_detail = self._sensevoice_error or "SenseVoice model not available"
+                logger.error(f"❌ SenseVoice model not available: {error_detail}")
                 self._write_speech_response(trigger_id, "", f"Speech-to-text unavailable: {error_detail}")
                 return
             
@@ -1158,11 +1206,22 @@ class ReviewGateServer:
                 self._write_speech_response(trigger_id, "", "Audio file not found")
                 return
             
-            logger.info(f"🎤 Transcribing audio: {audio_file}")
+            logger.info(f"🎤 Transcribing audio with SenseVoice: {audio_file}")
             
-            # Transcribe audio using Faster-Whisper
-            segments, info = self._whisper_model.transcribe(audio_file, beam_size=5)
-            transcription = " ".join(segment.text for segment in segments).strip()
+            # Transcribe audio using SenseVoice
+            res = self._sensevoice_model.generate(
+                input=audio_file,
+                cache={},
+                language="auto",  # 自动检测语言
+                use_itn=True,  # 启用标点和反向文本归一化
+                batch_size_s=60,
+            )
+            
+            # Extract transcription text
+            if res and len(res) > 0 and "text" in res[0]:
+                transcription = rich_transcription_postprocess(res[0]["text"])
+            else:
+                transcription = ""
             
             logger.info(f"✅ Speech transcribed: '{transcription}'")
             
@@ -1214,9 +1273,9 @@ class ReviewGateServer:
         status = {
             "speech_monitoring_active": getattr(self, '_speech_monitoring_active', False),
             "speech_thread_alive": getattr(self, '_speech_thread', None) and self._speech_thread.is_alive(),
-            "whisper_model_loaded": self._whisper_model is not None,
-            "whisper_error": getattr(self, '_whisper_error', None),
-            "faster_whisper_available": WHISPER_AVAILABLE
+            "sensevoice_model_loaded": self._sensevoice_model is not None,
+            "sensevoice_error": getattr(self, '_sensevoice_error', None),
+            "sensevoice_available": SENSEVOICE_AVAILABLE
         }
         
         # Log status if there are issues
@@ -1224,8 +1283,8 @@ class ReviewGateServer:
             logger.warning("⚠️ Speech monitoring is not active")
         if not status["speech_thread_alive"]:
             logger.warning("⚠️ Speech monitoring thread is not running")
-        if not status["whisper_model_loaded"]:
-            logger.warning(f"⚠️ Whisper model not loaded: {status['whisper_error']}")
+        if not status["sensevoice_model_loaded"]:
+            logger.warning(f"⚠️ SenseVoice model not loaded: {status['sensevoice_error']}")
         
         return status
 
