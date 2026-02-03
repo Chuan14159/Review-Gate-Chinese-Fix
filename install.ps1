@@ -274,7 +274,7 @@ if (Test-Path $venvActivate) {
     Write-Progress-Log "Installing SenseVoice (FunASR) for speech-to-text..."
     Write-Info-Log "SenseVoice provides better Chinese recognition accuracy"
     try {
-        & $venvPython -m pip install funasr>=1.1.2 modelscope torch torchaudio
+        & $venvPython -m pip install funasr==1.3.1 modelscope==1.21.0 torch==2.5.1 torchaudio==2.5.1
         Write-Success-Log "SenseVoice (FunASR) installed successfully"
         
         # Pre-download model to avoid first-run delay

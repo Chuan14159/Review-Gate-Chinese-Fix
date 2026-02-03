@@ -19,14 +19,32 @@ import uuid
 import glob
 import tempfile
 import hashlib
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
+
+@contextmanager
+def redirect_stdout_to_stderr():
+    """
+    Redirect stdout to stderr temporarily.
+    This prevents third-party libraries (like funasr/modelscope) from 
+    outputting non-JSON text to stdout, which would break MCP protocol.
+    """
+    old_stdout = sys.stdout
+    sys.stdout = sys.stderr
+    try:
+        yield
+    finally:
+        sys.stdout = old_stdout
+
 # Speech-to-text imports (SenseVoice - 阿里开源，中文识别更准确)
+# Use redirect to prevent import messages from breaking MCP stdout
 try:
-    from funasr import AutoModel
-    from funasr.utils.postprocess_utils import rich_transcription_postprocess
+    with redirect_stdout_to_stderr():
+        from funasr import AutoModel
+        from funasr.utils.postprocess_utils import rich_transcription_postprocess
     SENSEVOICE_AVAILABLE = True
 except ImportError:
     SENSEVOICE_AVAILABLE = False
@@ -133,13 +151,17 @@ class ReviewGateServer:
             
             try:
                 logger.info(f"🔄 Loading SenseVoice model: {model_dir}")
-                model = AutoModel(
-                    model=model_dir,
-                    trust_remote_code=True,
-                    vad_model="fsmn-vad",
-                    vad_kwargs={"max_single_segment_time": 30000},
-                    device="cpu",  # Use CPU for compatibility
-                )
+                # Redirect stdout during model loading to prevent non-JSON output
+                # from breaking MCP protocol (funasr outputs progress/warnings to stdout)
+                with redirect_stdout_to_stderr():
+                    model = AutoModel(
+                        model=model_dir,
+                        trust_remote_code=True,
+                        vad_model="fsmn-vad",
+                        vad_kwargs={"max_single_segment_time": 30000},
+                        device="cpu",  # Use CPU for compatibility
+                        disable_update=True,  # Disable version check to speed up startup
+                    )
                 
                 logger.info("✅ Successfully loaded SenseVoice model")
                 logger.info("📊 Model info - SenseVoiceSmall with VAD")
@@ -1209,17 +1231,20 @@ class ReviewGateServer:
             logger.info(f"🎤 Transcribing audio with SenseVoice: {audio_file}")
             
             # Transcribe audio using SenseVoice
-            res = self._sensevoice_model.generate(
-                input=audio_file,
-                cache={},
-                language="auto",  # 自动检测语言
-                use_itn=True,  # 启用标点和反向文本归一化
-                batch_size_s=60,
-            )
+            # Redirect stdout to prevent funasr output from breaking MCP protocol
+            with redirect_stdout_to_stderr():
+                res = self._sensevoice_model.generate(
+                    input=audio_file,
+                    cache={},
+                    language="auto",  # 自动检测语言
+                    use_itn=True,  # 启用标点和反向文本归一化
+                    batch_size_s=60,
+                )
             
             # Extract transcription text
             if res and len(res) > 0 and "text" in res[0]:
-                transcription = rich_transcription_postprocess(res[0]["text"])
+                with redirect_stdout_to_stderr():
+                    transcription = rich_transcription_postprocess(res[0]["text"])
             else:
                 transcription = ""
             
