@@ -17,8 +17,8 @@ Review Gate 是一个 MCP（Model Context Protocol）服务器，用于在 Curso
 
 ```powershell
 # 克隆仓库
-git clone https://github.com/LakshmanTurlapati/Review-Gate.git
-cd Review-Gate
+git clone https://github.com/Chuan14159/Review-Gate-Chinese-Fix.git
+cd Review-Gate-Chinese-Fix
 
 # 允许脚本执行
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
@@ -30,8 +30,8 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ### 命令提示符
 
 ```cmd
-git clone https://github.com/LakshmanTurlapati/Review-Gate.git
-cd Review-Gate
+git clone https://github.com/Chuan14159/Review-Gate-Chinese-Fix.git
+cd Review-Gate-Chinese-Fix
 install.bat
 ```
 

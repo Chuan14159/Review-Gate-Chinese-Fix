@@ -8,7 +8,7 @@ Cursor IDE 的 MCP 集成交互控制系统。
 > 中文汉化：Chuan  
 > 当前版本：2.7.3-cn.5（基于原版 2.7.3）
 
-[![Version](https://img.shields.io/badge/version-2.7.3--cn.5-blue.svg)](https://github.com/LakshmanTurlapati/Review-Gate)
+[![Version](https://img.shields.io/badge/version-2.7.3--cn.5-blue.svg)](https://github.com/Chuan14159/Review-Gate-Chinese-Fix)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 [![MCP](https://img.shields.io/badge/MCP-Tool-orange.svg)](https://modelcontextprotocol.io/)
@@ -76,8 +76,8 @@ graph TD
 ### 一键安装
 
 ```powershell
-git clone https://github.com/LakshmanTurlapati/Review-Gate.git
-cd Review-Gate
+git clone https://github.com/Chuan14159/Review-Gate-Chinese-Fix.git
+cd Review-Gate-Chinese-Fix
 ./install.ps1
 ```
 
